@@ -1,0 +1,38 @@
+// TENANT MODEL - PRODUCTION READY
+// Replace existing Tenant model with this
+
+model Tenant {
+  id              String   @id @default(uuid())
+  name            String
+  subdomain       String  @unique
+  status          TenantStatus @default(PENDING)
+  logoUrl         String?  @map("logo_url")
+  primaryColor    String?  @map("primary_color")
+  secondaryColor  String?  @map("secondary_color")
+  settings        Json     @default("{}")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  // Relations (keep existing)
+  users           User[]
+  pupils          Pupil[]
+  teachers        Teacher[]
+  classes         Class[]
+  attendance      Attendance[]
+  exams           Exam[]
+  feeStructures   FeeStructure[]
+  invoices        Invoice[]
+  payments        Payment[]
+  tenantFeatures   TenantFeature[]
+  activityLogs    ActivityLog[]
+
+  @@map("tenants")
+}
+
+enum TenantStatus {
+  PENDING
+  TRIAL
+  AWAITING_PAYMENT
+  ACTIVE
+  SUSPENDED
+}

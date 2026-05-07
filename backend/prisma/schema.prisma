@@ -1,0 +1,372 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// TENANT STATUS ENUM
+enum TenantStatus {
+  PENDING
+  TRIAL
+  AWAITING_PAYMENT
+  ACTIVE
+  SUSPENDED
+}
+
+// TENANTS (Schools)
+model Tenant {
+  id              String   @id @default(uuid())
+  name            String
+  subdomain       String  @unique
+  status          TenantStatus @default(PENDING)
+  ownerUserId     String?  @map("owner_user_id")
+  logoUrl         String?  @map("logo_url")
+  primaryColor    String?  @map("primary_color")
+  secondaryColor  String?  @map("secondary_color")
+  settings        Json     @default("{}")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  owner           User? @relation("TenantOwner", fields: [ownerUserId], references: [id])
+  users           User[]
+  pupils          Pupil[]
+  teachers        Teacher[]
+  classes         Class[]
+  attendance      Attendance[]
+  exams           Exam[]
+  feeStructures   FeeStructure[]
+  invoices        Invoice[]
+  payments        Payment[]
+  tenantFeatures   TenantFeature[]
+  activityLogs    ActivityLog[]
+  examResults     ExamResult[]
+
+  @@map("tenants")
+}
+
+// USERS
+model User {
+  id            String    @id @default(uuid())
+  tenantId      String    @map("tenant_id")
+  email         String
+  passwordHash  String    @map("password_hash")
+  firstName     String    @map("first_name")
+  lastName      String    @map("last_name")
+  role          String    @default("teacher") // super_admin | school_admin | principal | bursar | teacher | parent
+  phone         String?
+  status        String    @default("active")
+  emailVerified Boolean   @default(false) @map("email_verified")
+  lastLoginAt   DateTime? @map("last_login_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  tenant          Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  ownedTenants    Tenant[] @relation("TenantOwner")
+  teacher         Teacher?
+  markedAttendance Attendance[] @relation("AttendanceMarker")
+  enteredResults   ExamResult[] @relation("ResultEnterer")
+  recordedPayments Payment[] @relation("PaymentRecorder")
+  activityLogs    ActivityLog[]
+  refreshTokens    RefreshToken[]
+
+  @@unique([tenantId, email])
+  @@map("users")
+}
+
+// PUPILS (Students)
+model Pupil {
+  id             String    @id @default(uuid())
+  tenantId       String    @map("tenant_id")
+  pupilNumber    String    @unique @map("pupil_number")
+  firstName      String    @map("first_name")
+  lastName       String    @map("last_name")
+  gender         String
+  dateOfBirth    DateTime? @map("date_of_birth")
+  classId        String?   @map("class_id")
+  guardianName   String?   @map("guardian_name")
+  guardianPhone  String?   @map("guardian_phone")
+  guardianEmail  String?   @map("guardian_email")
+  address        String?
+  status         String    @default("active")
+  enrollmentDate DateTime  @default(now()) @map("enrollment_date")
+  balance        Decimal   @default(0.00) @db.Decimal(10, 2)
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  class     Class? @relation(fields: [classId], references: [id])
+  attendance Attendance[]
+  invoices  Invoice[]
+  payments  Payment[]
+  examResults ExamResult[]
+
+  @@unique([tenantId, pupilNumber])
+  @@map("pupils")
+}
+
+// TEACHERS
+model Teacher {
+  id            String   @id @default(uuid())
+  tenantId      String   @map("tenant_id")
+  userId        String?  @unique @map("user_id")
+  employeeId    String?  @map("employee_id")
+  firstName     String   @map("first_name")
+  lastName      String   @map("last_name")
+  email         String?
+  phone         String?
+  department    String?
+  qualifications Json     @default("[]")
+  joinDate      DateTime? @map("join_date")
+  status        String   @default("active")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  tenant     Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user       User?  @relation(fields: [userId], references: [id])
+  classes    Class[]
+
+  @@map("teachers")
+}
+
+// CLASSES
+model Class {
+  id              String   @id @default(uuid())
+  tenantId        String   @map("tenant_id")
+  name            String
+  gradeLevel      String?  @map("grade_level")
+  stream          String?
+  academicYear    String?  @map("academic_year")
+  capacity        Int      @default(40)
+  classTeacherId  String?  @map("class_teacher_id")
+  room            String?
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  classTeacher Teacher? @relation(fields: [classTeacherId], references: [id])
+  pupils       Pupil[]
+  attendance   Attendance[]
+  exams        Exam[]
+
+  @@map("classes")
+}
+
+// ATTENDANCE
+model Attendance {
+  id        String   @id @default(uuid())
+  tenantId  String   @map("tenant_id")
+  pupilId   String   @map("pupil_id")
+  classId   String?  @map("class_id")
+  date      DateTime
+  status    String   // present | absent | late | excused
+  markedBy  String?  @map("marked_by")
+  notes     String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  pupil    Pupil  @relation(fields: [pupilId], references: [id], onDelete: Cascade)
+  class    Class? @relation(fields: [classId], references: [id])
+  marker   User?  @relation("AttendanceMarker", fields: [markedBy], references: [id])
+
+  @@unique([tenantId, pupilId, date])
+  @@map("attendance")
+}
+
+// EXAMS
+model Exam {
+  id             String   @id @default(uuid())
+  tenantId       String   @map("tenant_id")
+  title          String
+  subject        String
+  classId        String?  @map("class_id")
+  examDate       DateTime @map("exam_date")
+  maxMarks       Int      @map("max_marks")
+  passingMarks   Int?     @map("passing_marks")
+  examType       String?  @map("exam_type")
+  durationMinutes Int?     @map("duration_minutes")
+  description    String?
+  status         String   @default("upcoming")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  class  Class? @relation(fields: [classId], references: [id])
+  results ExamResult[]
+
+  @@map("exams")
+}
+
+// EXAM RESULTS
+model ExamResult {
+  id        String   @id @default(uuid())
+  tenantId  String   @map("tenant_id")
+  examId    String   @map("exam_id")
+  pupilId   String   @map("pupil_id")
+  marks     Int
+  grade     String?
+  remarks   String?
+  enteredBy String?  @map("entered_by")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  exam     Exam   @relation(fields: [examId], references: [id], onDelete: Cascade)
+  pupil    Pupil  @relation(fields: [pupilId], references: [id], onDelete: Cascade)
+  enterer  User?  @relation("ResultEnterer", fields: [enteredBy], references: [id])
+
+  @@unique([tenantId, examId, pupilId])
+  @@map("exam_results")
+}
+
+// FEE STRUCTURES
+model FeeStructure {
+  id                String   @id @default(uuid())
+  tenantId          String   @map("tenant_id")
+  name              String
+  amount            Decimal  @db.Decimal(10, 2)
+  frequency         String   // monthly | term | annual | one-time
+  applicableClasses Json     @default("[]") @map("applicable_classes")
+  dueDate           DateTime? @map("due_date")
+  description       String?
+  isMandatory       Boolean  @default(true) @map("is_mandatory")
+  isActive          Boolean  @default(true) @map("is_active")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  invoices Invoice[]
+
+  @@map("fee_structures")
+}
+
+// INVOICES
+model Invoice {
+  id            String   @id @default(uuid())
+  tenantId      String   @map("tenant_id")
+  invoiceNumber String   @unique @map("invoice_number")
+  pupilId       String   @map("pupil_id")
+  feeStructureId String?  @map("fee_structure_id")
+  amount        Decimal  @db.Decimal(10, 2)
+  paidAmount    Decimal  @default(0.00) @map("paid_amount") @db.Decimal(10, 2)
+  status        String   @default("pending") // pending | partial | paid | overdue | cancelled
+  dueDate       DateTime @map("due_date")
+  paidDate      DateTime? @map("paid_date")
+  notes         String?
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  pupil         Pupil          @relation(fields: [pupilId], references: [id], onDelete: Cascade)
+  feeStructure FeeStructure?  @relation(fields: [feeStructureId], references: [id])
+  payments      Payment[]
+
+  @@map("invoices")
+}
+
+// PAYMENTS
+model Payment {
+  id              String   @id @default(uuid())
+  tenantId        String   @map("tenant_id")
+  receiptNumber   String   @unique @map("receipt_number")
+  invoiceId       String?  @map("invoice_id")
+  pupilId         String   @map("pupil_id")
+  amount          Decimal  @db.Decimal(10, 2)
+  paymentMethod   String   @map("payment_method") // cash | bank_transfer | mobile_money | cheque | card
+  referenceNumber String?  @map("reference_number")
+  paymentDate     DateTime @map("payment_date")
+  notes           String?
+  recordedBy      String?  @map("recorded_by")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  // Relations
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  invoice  Invoice? @relation(fields: [invoiceId], references: [id])
+  pupil    Pupil   @relation(fields: [pupilId], references: [id], onDelete: Cascade)
+  recorder User?   @relation("PaymentRecorder", fields: [recordedBy], references: [id])
+
+  @@map("payments")
+}
+
+// FEATURES (Master list)
+model Feature {
+  id          String   @id @default(uuid())
+  code        String   @unique
+  name        String
+  description String?
+  price       Decimal  @default(0.00) @db.Decimal(10, 2)
+  isBase      Boolean  @default(false) @map("is_base")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  // Relations
+  tenantFeatures TenantFeature[]
+
+  @@map("features")
+}
+
+// TENANT FEATURES (Subscriptions)
+model TenantFeature {
+  id            String    @id @default(uuid())
+  tenantId      String    @map("tenant_id")
+  featureId     String    @map("feature_id")
+  enabled       Boolean   @default(true)
+  subscribedAt  DateTime  @default(now()) @map("subscribed_at")
+  unsubscribedAt DateTime? @map("unsubscribed_at")
+
+  // Relations
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  feature Feature @relation(fields: [featureId], references: [id])
+
+  @@unique([tenantId, featureId])
+  @@map("tenant_features")
+}
+
+// REFRESH TOKENS
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  token     String
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+}
+
+// ACTIVITY LOG
+model ActivityLog {
+  id           String    @id @default(uuid())
+  tenantId     String?   @map("tenant_id")
+  userId       String?   @map("user_id")
+  action       String
+  resourceType String?   @map("resource_type")
+  resourceId   String?   @map("resource_id")
+  details      Json?
+  ipAddress    String?   @map("ip_address")
+  userAgent    String?   @map("user_agent")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  // Relations
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [userId], references: [id])
+
+  @@map("activity_logs")
+}
+

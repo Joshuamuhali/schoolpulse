@@ -1,0 +1,7 @@
+export enum TenantStatus {
+  PENDING = 'PENDING',
+  TRIAL = 'TRIAL',
+  AWAITING_PAYMENT = 'AWAITING_PAYMENT',
+  ACTIVE = 'ACTIVE',
+  SUSPENDED = 'SUSPENDED',
+}
